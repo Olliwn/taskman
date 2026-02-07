@@ -16,11 +16,35 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TASKS_FILE = os.path.join(BASE_DIR, 'tasks', 'runnning.md')
 OPEN_DIR = os.path.join(BASE_DIR, 'open')
 
-# Task format regex: (status|priority|date) description
-TASK_PATTERN = re.compile(r'^\((\w+)\|(\w+)\|(\d{4}-\d{2}-\d{2})\)\s+(.+)$')
+# Task format regex: (status|priority|date|categories) description
+TASK_PATTERN = re.compile(r'^\((\w+)\|(\w+)\|(\d{4}-\d{2}-\d{2})(?:\|([^)]+))?\)\s+(.+)$')
 # Legacy format: (status)   description
 LEGACY_PATTERN = re.compile(r'^\((\w+)\)\s+(.+)$')
 
+def normalize_categories(value):
+    if not value:
+        return []
+    if isinstance(value, str):
+        items = value.split(',')
+    elif isinstance(value, list):
+        items = value
+    else:
+        return []
+    cleaned = []
+    seen = set()
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        name = item.strip()
+        if not name:
+            continue
+        name = re.sub(r'[|()]+', '-', name)
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(name)
+    return cleaned
 
 def parse_tasks():
     """Parse tasks from running.md file."""
@@ -46,13 +70,14 @@ def parse_tasks():
         if match:
             if current_task:
                 tasks.append(current_task)
-            status, priority, date, description = match.groups()
+            status, priority, date, categories_raw, description = match.groups()
             current_task = {
                 'id': task_id,
                 'status': status,
                 'priority': priority,
                 'date': date,
-                'description': description
+                'description': description,
+                'categories': normalize_categories(categories_raw)
             }
             task_id += 1
             continue
@@ -68,7 +93,8 @@ def parse_tasks():
                 'status': status,
                 'priority': 'normal',
                 'date': datetime.now().strftime('%Y-%m-%d'),
-                'description': description.strip()
+                'description': description.strip(),
+                'categories': []
             }
             task_id += 1
             continue
@@ -90,8 +116,10 @@ def save_tasks(tasks):
     
     with open(TASKS_FILE, 'w', encoding='utf-8') as f:
         for task in tasks:
+            categories = normalize_categories(task.get('categories', []))
+            cat_segment = f"|{','.join(categories)}" if categories else ""
             # Write main task line
-            f.write(f"({task['status']}|{task['priority']}|{task['date']}) {task['description'].split(chr(10))[0]}\n")
+            f.write(f"({task['status']}|{task['priority']}|{task['date']}{cat_segment}) {task['description'].split(chr(10))[0]}\n")
             # Write continuation lines if multi-line description
             desc_lines = task['description'].split('\n')
             for extra_line in desc_lines[1:]:
@@ -122,7 +150,8 @@ def create_task():
         'status': data.get('status', 'created'),
         'priority': data.get('priority', 'normal'),
         'date': datetime.now().strftime('%Y-%m-%d'),
-        'description': data.get('description', '')
+        'description': data.get('description', ''),
+        'categories': normalize_categories(data.get('categories', []))
     }
     
     tasks.append(new_task)
@@ -142,6 +171,8 @@ def update_task(task_id):
             task['status'] = data.get('status', task['status'])
             task['priority'] = data.get('priority', task['priority'])
             task['description'] = data.get('description', task['description'])
+            if 'categories' in data:
+                task['categories'] = normalize_categories(data.get('categories', []))
             save_tasks(tasks)
             return jsonify(task)
     

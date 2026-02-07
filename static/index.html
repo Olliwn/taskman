@@ -47,6 +47,10 @@
                     <option value="closed">Closed</option>
                 </select>
             </div>
+            <div class="filter-group category-filter">
+                <label>Category:</label>
+                <div id="category-filters" class="category-filters"></div>
+            </div>
             <div class="filter-group">
                 <label>Sort:</label>
                 <select id="sort-by">
@@ -92,6 +96,10 @@
                                 <option value="low">Low</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-categories">Categories</label>
+                        <input type="text" id="task-categories" placeholder="e.g. backend, infra">
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" data-close="modal-task">Cancel</button>

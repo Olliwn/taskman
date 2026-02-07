@@ -5,12 +5,14 @@
 // State
 let tasks = [];
 let topics = [];
+let selectedCategories = new Set();
 
 // DOM Elements
 const taskList = document.getElementById('task-list');
 const topicList = document.getElementById('topic-list');
 const filterStatus = document.getElementById('filter-status');
 const sortBy = document.getElementById('sort-by');
+const categoryFilters = document.getElementById('category-filters');
 
 // Modals
 const modalTask = document.getElementById('modal-task');
@@ -143,6 +145,8 @@ async function loadTasks() {
     try {
         const response = await fetch('/api/tasks');
         tasks = await response.json();
+        tasks = tasks.map(t => ({ ...t, categories: Array.isArray(t.categories) ? t.categories : [] }));
+        renderCategoryFilters();
         renderTasks();
     } catch (error) {
         console.error('Failed to load tasks:', error);
@@ -171,6 +175,9 @@ function renderTasks() {
     if (status !== 'all') {
         filtered = tasks.filter(t => t.status === status);
     }
+    if (selectedCategories.size > 0) {
+        filtered = filtered.filter(t => (t.categories || []).some(c => selectedCategories.has(c)));
+    }
     
     // Sort
     filtered = [...filtered].sort((a, b) => {
@@ -197,6 +204,7 @@ function renderTasks() {
                     <span class="status-badge ${task.status}">${task.status}</span>
                     <span class="priority-badge ${task.priority}">${task.priority}</span>
                     <span class="task-date">${formatDate(task.date)}</span>
+                    ${renderCategoryBadges(task.categories)}
                 </div>
                 <div class="task-description ${task.status === 'closed' ? 'closed' : ''}" onclick="startInlineEdit(${task.id})" title="${escapeHtml(task.description).replace(/"/g, '&quot;')}">${escapeHtml(task.description)}</div>
                 <div class="inline-edit">
@@ -212,6 +220,7 @@ function renderTasks() {
                             <option value="normal" ${task.priority === 'normal' ? 'selected' : ''}>Normal</option>
                             <option value="low" ${task.priority === 'low' ? 'selected' : ''}>Low</option>
                         </select>
+                        <input type="text" id="edit-categories-${task.id}" placeholder="categories" value="${escapeAttribute((task.categories || []).join(', '))}">
                         <div class="inline-edit-actions">
                             <button class="btn btn-secondary" onclick="cancelInlineEdit(${task.id})">Cancel</button>
                             <button class="btn btn-primary" onclick="saveInlineEdit(${task.id})">Save</button>
@@ -275,11 +284,13 @@ function openTaskModal() {
     const descField = document.getElementById('task-description');
     const statusField = document.getElementById('task-status');
     const priorityField = document.getElementById('task-priority');
+    const categoriesField = document.getElementById('task-categories');
     
     idField.value = '';
     descField.value = '';
     statusField.value = 'created';
     priorityField.value = 'normal';
+    categoriesField.value = '';
     
     modalTask.classList.remove('hidden');
     descField.focus();
@@ -326,6 +337,7 @@ function cancelInlineEdit(id) {
             document.getElementById(`edit-desc-${id}`).value = task.description;
             document.getElementById(`edit-status-${id}`).value = task.status;
             document.getElementById(`edit-priority-${id}`).value = task.priority;
+            document.getElementById(`edit-categories-${id}`).value = (task.categories || []).join(', ');
         }
     }
 }
@@ -334,12 +346,13 @@ async function saveInlineEdit(id) {
     const description = document.getElementById(`edit-desc-${id}`).value;
     const status = document.getElementById(`edit-status-${id}`).value;
     const priority = document.getElementById(`edit-priority-${id}`).value;
+    const categories = parseCategoriesInput(document.getElementById(`edit-categories-${id}`).value);
     
     try {
         const response = await fetch(`/api/tasks/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ description, status, priority })
+            body: JSON.stringify({ description, status, priority, categories })
         });
         
         if (response.ok) {
@@ -398,7 +411,8 @@ async function handleTaskSubmit(e) {
     const data = {
         description: document.getElementById('task-description').value,
         status: document.getElementById('task-status').value,
-        priority: document.getElementById('task-priority').value
+        priority: document.getElementById('task-priority').value,
+        categories: parseCategoriesInput(document.getElementById('task-categories').value)
     };
     
     try {
@@ -481,6 +495,70 @@ async function handleTopicSubmit(e) {
     }
 }
 
+function renderCategoryFilters() {
+    if (!categoryFilters) return;
+    const allCategories = getAllCategories();
+    selectedCategories = new Set([...selectedCategories].filter(c => allCategories.includes(c)));
+    categoryFilters.innerHTML = '';
+
+    if (allCategories.length === 0) {
+        const empty = document.createElement('span');
+        empty.className = 'filter-empty';
+        empty.textContent = 'No categories';
+        categoryFilters.appendChild(empty);
+        return;
+    }
+
+    const allBtn = document.createElement('button');
+    allBtn.type = 'button';
+    allBtn.className = `category-chip ${selectedCategories.size === 0 ? 'active' : ''}`;
+    allBtn.textContent = 'All';
+    allBtn.addEventListener('click', () => {
+        selectedCategories = new Set();
+        renderCategoryFilters();
+        renderTasks();
+    });
+    categoryFilters.appendChild(allBtn);
+
+    allCategories.forEach(category => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `category-chip ${selectedCategories.has(category) ? 'active' : ''}`;
+        btn.textContent = category;
+        btn.addEventListener('click', () => {
+            if (selectedCategories.has(category)) {
+                selectedCategories.delete(category);
+            } else {
+                selectedCategories.add(category);
+            }
+            renderCategoryFilters();
+            renderTasks();
+        });
+        categoryFilters.appendChild(btn);
+    });
+}
+
+function getAllCategories() {
+    const set = new Set();
+    tasks.forEach(task => {
+        (task.categories || []).forEach(category => set.add(category));
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function renderCategoryBadges(categories = []) {
+    if (!categories || categories.length === 0) return '';
+    return categories.map(c => `<span class="category-badge">${escapeHtml(c)}</span>`).join('');
+}
+
+function parseCategoriesInput(value) {
+    if (!value) return [];
+    return value
+        .split(',')
+        .map(v => v.trim())
+        .filter(v => v.length > 0);
+}
+
 // Utility: Format date
 function formatDate(dateStr) {
     const date = new Date(dateStr);
@@ -496,6 +574,10 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function escapeAttribute(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;');
 }
 
 // Register service worker
