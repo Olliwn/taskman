@@ -230,4 +230,4 @@ if __name__ == '__main__':
     print(f"Task Manager running at http://localhost:5050")
     print(f"Tasks file: {TASKS_FILE}")
     print(f"Open topics: {OPEN_DIR}")
-    app.run(host='0.0.0.0', port=5050, debug=True)
+    app.run(host='0.0.0.0', port=5050, debug=False)

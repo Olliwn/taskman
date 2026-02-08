@@ -55,6 +55,9 @@ ENV/
 *.log
 logs/
 
+# Launch agent plist (contains local paths)
+*.plist
+
 # ===================
 # Keep these (app files)
 # ===================
